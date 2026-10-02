@@ -1,0 +1,203 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: CloudFormation infrastructure for CareerHub
+
+Parameters:
+
+  VpcCIDR:
+    Type: String
+    Default: 10.20.0.0/16
+
+  SubnetCIDR:
+    Type: String
+    Default: 10.20.1.0/24
+
+  AvailabilityZone:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: ap-southeast-2a
+
+  InstanceType:
+    Type: String
+    Default: c7i-flex.large
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: CareerHub-Terraform
+
+  RootVolumeSize:
+    Type: Number
+    Default: 30
+
+Resources:
+
+  CareerHubVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: CareerHub-CFN-VPC
+
+  CareerHubSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref CareerHubVPC
+      CidrBlock: !Ref SubnetCIDR
+      AvailabilityZone: !Ref AvailabilityZone
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: CareerHub-CFN-Subnet
+
+  CareerHubInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: CareerHub-CFN-IGW
+
+  CareerHubVPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref CareerHubVPC
+      InternetGatewayId: !Ref CareerHubInternetGateway
+
+  CareerHubRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref CareerHubVPC
+      Tags:
+        - Key: Name
+          Value: CareerHub-CFN-Route-Table
+
+  CareerHubDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: CareerHubVPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref CareerHubRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref CareerHubInternetGateway
+
+  CareerHubSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref CareerHubSubnet
+      RouteTableId: !Ref CareerHubRouteTable
+
+  CareerHubSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for CareerHub CloudFormation infrastructure
+      VpcId: !Ref CareerHubVPC
+
+      SecurityGroupIngress:
+        - Description: SSH
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+        - Description: HTTP
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+        - Description: HTTPS
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+        - Description: CareerHub
+          IpProtocol: tcp
+          FromPort: 5173
+          ToPort: 5173
+          CidrIp: 0.0.0.0/0
+
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
+      Tags:
+        - Key: Name
+          Value: CareerHub-CFN-SG
+
+  CareerHubEC2:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-06259b63260eddc13
+      InstanceType: !Ref InstanceType
+      SubnetId: !Ref CareerHubSubnet
+
+      SecurityGroupIds:
+        - !Ref CareerHubSecurityGroup
+
+      KeyName: !Ref KeyName
+
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: !Ref RootVolumeSize
+            VolumeType: gp3
+            Encrypted: true
+            DeleteOnTermination: true
+
+      Tags:
+        - Key: Name
+          Value: CareerHub-CFN-Worker
+
+  CareerHubElasticIP:
+    Type: AWS::EC2::EIP
+    DependsOn: CareerHubVPCGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: CareerHub-CFN-EIP
+
+  CareerHubEIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      InstanceId: !Ref CareerHubEC2
+      AllocationId: !GetAtt CareerHubElasticIP.AllocationId
+
+  CareerHubS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+      Tags:
+        - Key: Name
+          Value: CareerHub-CFN-S3
+
+Outputs:
+
+  VPCId:
+    Description: CloudFormation CareerHub VPC ID
+    Value: !Ref CareerHubVPC
+
+  SubnetId:
+    Description: CloudFormation CareerHub Subnet ID
+    Value: !Ref CareerHubSubnet
+
+  SecurityGroupId:
+    Description: CloudFormation CareerHub Security Group ID
+    Value: !Ref CareerHubSecurityGroup
+
+  EC2InstanceId:
+    Description: CloudFormation CareerHub EC2 Instance ID
+    Value: !Ref CareerHubEC2
+
+  ElasticIP:
+    Description: CloudFormation CareerHub Elastic IP
+    Value: !Ref CareerHubElasticIP
+
+  S3BucketName:
+    Description: CloudFormation CareerHub S3 Bucket Name
+    Value: !Ref CareerHubS3Bucket

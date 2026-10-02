@@ -1,0 +1,29 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+
+# Terraform backup/local files
+*.backup
+*.task4-backup
+
+# CDK / Node.js
+cdk/node_modules/
+cdk/cdk.out/
+cdk/.npm/
+cdk/*.js
+cdk/*.d.ts
+
+# Secrets / credentials
+*.pem
+.env
+.env.*
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+.vscode/
